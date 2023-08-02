@@ -9,4 +9,8 @@ server.on('message', (message, info) => {
     fs.writeFileSync('received.jpg', message)
 })
 
+server.on('listening', () => {
+    console.log("Server is lestening on port " + port)
+})
+
 server.bind(port)
