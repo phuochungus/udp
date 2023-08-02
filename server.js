@@ -1,5 +1,6 @@
 const UDP = require('dgram')
 const fs = require('fs')
+const express = require('express')
 
 const server = UDP.createSocket('udp4')
 
@@ -14,3 +15,13 @@ server.on('listening', () => {
 })
 
 server.bind(port)
+const app = express()
+
+
+app.get('/PORT', (req, res) => {
+    res.send(port)
+})
+
+app.listen(port, () => {
+    console.log("app listen on port: " + port)
+})
