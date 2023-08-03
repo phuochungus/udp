@@ -7,7 +7,7 @@ const server = UDP.createSocket('udp4')
 const port = process.env.PORT || 2222
 
 server.on('message', (message, info) => {
-    server.send(message)
+    server.send(message, 65002)
 })
 
 server.on('listening', () => {
