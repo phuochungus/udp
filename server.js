@@ -22,6 +22,10 @@ app.get('/PORT', (req, res) => {
     res.send(port)
 })
 
+app.get('/address', (req, res) => {
+    res.send(server.address())
+})
+
 app.listen(port, () => {
     console.log("app listen on port: " + port)
 })
