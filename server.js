@@ -7,6 +7,7 @@ const server = UDP.createSocket('udp4')
 const port = process.env.PORT || 2222
 
 server.on('message', (message, info) => {
+    console.log('received message')
     server.send(message, 65002)
 })
 
