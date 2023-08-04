@@ -1,0 +1,1 @@
+docker run --gpus=all -it --rm -v "%cd%":/root/workspace/script d0d3d6205a0ee0a5c358a9c4b5962fcffa66e4cfbff35673dcb6d99c953716af
