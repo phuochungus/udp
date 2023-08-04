@@ -2,10 +2,15 @@ const UDP = require('dgram')
 const express = require('express')
 const ort = require('onnxruntime-node');
 const { join } = require('path');
-const fs = require('fs')
 const Jimp = require('jimp')
+const multer = require('multer')
+const fs = require('fs')
 
-const lable = ['person',
+const upload = multer({
+    dest: './temp_imgs'
+})
+
+const labels = ['person',
     'bicycle',
     'car',
     'motorcycle',
@@ -59,12 +64,8 @@ function getRandomInt(max) {
 }
 
 async function loadImagefromPath(path, width = 640, height = 640) {
-    // Use Jimp to load the image and resize it.
-    var imageData = await Jimp.default.read(path).then((imageBuffer) => {
-        return imageBuffer.resize(width, height);
-    });
-
-    return imageData;
+    var imageData = await Jimp.read(path)
+    return imageData.resize(width, height)
 }
 
 function imageDataToTensor(image, dims) {
@@ -93,10 +94,33 @@ async function getImageTensorFromPath(path, dims = [1, 3, 640, 640]) {
     return imageTensor;
 }
 
+function parsePredictResult(rawResult) {
+    const THRESHOLD = BigInt(30)
+    let outputResult = []
+    for (let index = 0; index < 300; index = index + 5) {
+        let accuracy = rawResult.dets.data[index + 4] * 100
+        if (accuracy >= THRESHOLD) {
+            outputResult.push(
+                {
+                    x: rawResult.dets.data[index],
+                    y: rawResult.dets.data[index + 1],
+                    height: rawResult.dets.data[index + 2],
+                    width: rawResult.dets.data[index + 3],
+                    lable: labels[rawResult.labels.data[index / 5]],
+                    accuracy: accuracy
+                }
+            )
+        }
+    }
+    return outputResult
+}
+
 async function main() {
     const udpServer = UDP.createSocket('udp4')
-    const PORT = process.env.PORT || 2222
+    const PORT = process.env.PORT || 3000
     const app = express()
+
+    const session = await ort.InferenceSession.create(join(process.cwd(), 'onnx_model', 'end2end.onnx'));
 
     udpServer.on('message', (message, info) => {
         console.log('received message')
@@ -132,22 +156,26 @@ async function main() {
         console.log("app listen on port: " + PORT)
     })
 
-    try {
-        const session = await ort.InferenceSession.create(join(process.cwd(), 'onnx_model', 'end2end.onnx'));
-        const start = Date.now()
-        const imgTensor = await getImageTensorFromPath('demo.jpg')
+    app.use('/uploads', express.static('upload_page'))
 
-        const results = await session.run({
-            'input': imgTensor
-        })
+    app.post('/upload', upload.single('image'), async (req, res) => {
+        try {
+            const imgTensor = await getImageTensorFromPath(req.file.path)
 
-        const temp = results[session.outputNames[0]]
-        console.log(Date.now() - start)
-        console.log(temp)
+            fs.unlink(join(process.cwd(), req.file.path), (err) => {
+                if (err)
+                    console.error(err)
 
-    } catch (error) {
-        console.error(error)
-    }
+            })
+            const results = await session.run({
+                'input': imgTensor
+            })
+            res.json({ bbox: parsePredictResult(results) })
+        } catch (error) {
+            console.error(error)
+        }
+    })
+
 }
 
 main()
