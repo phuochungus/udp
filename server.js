@@ -90,38 +90,30 @@ function imageDataToTensor(image, dims) {
 }
 
 async function tensorFromRGB(redArray, greenArray, blueArray, height, width) {
+    if (!(redArray.length == greenArray.length && redArray.length == blueArray.length)) throw new Error(" 3 array not the same lengh")
     const INPUT_HEIGHT = 640
     const INPUT_WIDTH = 640
-    try {
-        const [redResize, greenResize, blueResize] = await Promise.all[
-            sharp(Buffer.from(redArray), {
-                raw: {
-                    channels: 1,
-                    height,
-                    width
-                }
-            }).resize(INPUT_WIDTH, INPUT_HEIGHT).toBuffer(),
-            sharp(Buffer.from(greenArray), {
-                raw: {
-                    channels: 1,
-                    height,
-                    width
-                }
-            }).resize(INPUT_WIDTH, INPUT_HEIGHT).toBuffer(),
-            sharp(Buffer.from(blueArray), {
-                raw: {
-                    channels: 1,
-                    height,
-                    width
-                }
-            }).resize(INPUT_WIDTH, INPUT_HEIGHT).toBuffer()
-        ]
-        const combinedBuffer = Buffer.concat(redResize, greenResize, blueResize)
-        const tensor = new ort.Tensor("float32", new Float32Array(combinedBuffer), [1, 3, 640, 640])
-        return tensor
-    } catch (error) {
-        console.error(error)
+    const buffer = Buffer.alloc(3 * redArray.length)
+    for (let i = 0; i < redArray.length; i = i + 4) {
+        buffer[i] = redArray[i]
+        buffer[i + 1] = greenArray[i]
+        buffer[i + 2] = blueArray[i]
     }
+
+    const newBuffer = await sharp(buffer, {
+        raw: {
+            channels: 3,
+            height,
+            width
+        }
+    })
+        .resize(INPUT_WIDTH, INPUT_HEIGHT)
+        .toBuffer()
+
+
+    const float32Array = new Float32Array(newBuffer)
+    const tensor = new ort.Tensor("float32", float32Array, [1, 3, 640, 640])
+    return tensor
 }
 
 
@@ -156,6 +148,7 @@ async function main() {
     const udpServer = UDP.createSocket('udp4')
     const PORT = process.env.PORT || 3000
     const app = express()
+    app.use(express.json())
 
     const session = await ort.InferenceSession.create(join(process.cwd(), 'onnx_model', 'end2end.onnx'));
 
@@ -215,13 +208,17 @@ async function main() {
 
     app.post('/uploadRGB', async (req, res) => {
         try {
-            const tensor = tensorFromRGB(req.body.r, req.body.g, req.body.b, req.body.height, req.body.width)
+            const tensor = await tensorFromRGB(req.body.r, req.body.g, req.body.b, req.body.height, req.body.width)
             const results = await session.run({
                 'input': tensor
             })
             res.json({ bbox: parsePredictResult(results) })
         } catch (error) {
             console.error(error)
+            res.status(500).json({
+                error
+            })
+            throw error
         }
     }
     )
