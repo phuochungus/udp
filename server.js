@@ -215,7 +215,7 @@ async function main() {
 
     app.post('/uploadRGB', async (req, res) => {
         try {
-            const tensor = tensorFromRGB(req.body.red, req.body.green, req.body.blue, req.body.height, req.body.width)
+            const tensor = tensorFromRGB(req.body.r, req.body.g, req.body.b, req.body.height, req.body.width)
             const results = await session.run({
                 'input': tensor
             })
