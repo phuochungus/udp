@@ -5,6 +5,7 @@ const { join } = require('path');
 const Jimp = require('jimp')
 const multer = require('multer')
 const fs = require('fs')
+const sharp = require('sharp')
 
 const upload = multer({
     dest: './temp_imgs'
@@ -87,6 +88,42 @@ function imageDataToTensor(image, dims) {
     const inputTensor = new ort.Tensor("float32", float32Data, dims);
     return inputTensor;
 }
+
+async function tensorFromRGB(redArray, greenArray, blueArray, height, width) {
+    const INPUT_HEIGHT = 640
+    const INPUT_WIDTH = 640
+    try {
+        const [redResize, greenResize, blueResize] = await Promise.all[
+            sharp(Buffer.from(redArray), {
+                raw: {
+                    channels: 1,
+                    height,
+                    width
+                }
+            }).resize(INPUT_WIDTH, INPUT_HEIGHT).toBuffer(),
+            sharp(Buffer.from(greenArray), {
+                raw: {
+                    channels: 1,
+                    height,
+                    width
+                }
+            }).resize(INPUT_WIDTH, INPUT_HEIGHT).toBuffer(),
+            sharp(Buffer.from(blueArray), {
+                raw: {
+                    channels: 1,
+                    height,
+                    width
+                }
+            }).resize(INPUT_WIDTH, INPUT_HEIGHT).toBuffer()
+        ]
+        const combinedBuffer = Buffer.concat(redResize, greenResize, blueResize)
+        const tensor = new ort.Tensor("float32", new Float32Array(combinedBuffer), [1, 3, 640, 640])
+        return tensor
+    } catch (error) {
+        console.error(error)
+    }
+}
+
 
 async function getImageTensorFromPath(path, dims = [1, 3, 640, 640]) {
     var image = await loadImagefromPath(path, dims[2], dims[3]);
@@ -175,6 +212,19 @@ async function main() {
             console.error(error)
         }
     })
+
+    app.post('/uploadRGB', async (req, res) => {
+        try {
+            const tensor = tensorFromRGB(req.body.red, req.body.green, req.body.blue, req.body.height, req.body.width)
+            const results = await session.run({
+                'input': tensor
+            })
+            res.json({ bbox: parsePredictResult(results) })
+        } catch (error) {
+            console.error(error)
+        }
+    }
+    )
 
 }
 
