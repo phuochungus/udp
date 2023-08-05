@@ -148,7 +148,7 @@ async function main() {
     const udpServer = UDP.createSocket('udp4')
     const PORT = process.env.PORT || 3000
     const app = express()
-    app.use(express.json())
+    app.use(express.json({ limit: '1Mb' }))
 
     const session = await ort.InferenceSession.create(join(process.cwd(), 'onnx_model', 'end2end.onnx'));
 
