@@ -183,7 +183,8 @@ async function main() {
                 'input': tensor
             })
             const predicResult = parsePredictResult(result)
-            socket.emit("result", Buffer.from(predicResult.rawOutputArray))
+            console.log('ok')
+            socket.emit("result", predicResult.rawOutputArray)
         })
     })
 
