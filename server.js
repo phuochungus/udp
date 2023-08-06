@@ -67,8 +67,8 @@ function getRandomInt(max) {
     return Math.floor(Math.random() * max);
 }
 
-async function loadImagefromPath(path, width = 640, height = 640) {
-    var imageData = await Jimp.read(path)
+async function loadImagefromPathOrBuffer(pathOrBuffer, width = 640, height = 640) {
+    var imageData = await Jimp.read(pathOrBuffer)
     return imageData.resize(width, height)
 }
 
@@ -120,14 +120,14 @@ async function tensorFromRGB(redArray, greenArray, blueArray, height, width) {
 }
 
 
-async function getImageTensorFromPath(path, dims = [1, 3, 640, 640]) {
-    var image = await loadImagefromPath(path, dims[2], dims[3]);
+async function getImageTensorFromPathOrBuffer(path, dims = [1, 3, 640, 640]) {
+    var image = await loadImagefromPathOrBuffer(path, dims[2], dims[3]);
     var imageTensor = imageDataToTensor(image, dims);
     return imageTensor;
 }
 
 function parsePredictResult(rawResult) {
-    const THRESHOLD = BigInt(30)
+    const THRESHOLD = BigInt(0)
     let outputResult = []
     let rawOutputArray = []
     for (let index = 0; index < 300; index = index + 5) {
@@ -143,8 +143,8 @@ function parsePredictResult(rawResult) {
                     accuracy: accuracy
                 }
             )
-            Object.values(outputResult[index]).forEach(val => rawOutputArray.push(val))
-            rawOutputArray[rawOutputArray.length - 2] = rawResult.labels.data[index / 5]
+            Object.values(outputResult[outputResult.length - 1]).forEach(val => rawOutputArray.push(val))
+            rawOutputArray[rawOutputArray.length - 2] = Number(rawResult.labels.data[index / 5])
         }
     }
     return { outputResult, rawOutputArray }
@@ -155,22 +155,7 @@ async function getTensorFromBase64String(base64string) {
     const INPUT_HEIGHT = 640
     const INPUT_WIDTH = 640
 
-    const { data, info } = await sharp(buffer).resize(INPUT_WIDTH, INPUT_HEIGHT, { fit: 'fill' }).toFormat('jpg').raw({ depth: 'char' }).toBuffer({ resolveWithObject: true })
-    console.log(data)
-    console.log(info)
-    fs.writeFileSync('originImgage.jpg', buffer)
-    fs.writeFileSync('resizedImage.jpg',)
-    // fs.writeFile('resized_img.jpg', resizedImageBuffer)
-    // const [redArray, greenArray, blueArray] = [[], [], []]
-    // for (let i = 0; i < resizedImageBuffer.length; i += 3) {
-    //     redArray.push(resizedImageBuffer[i]);
-    //     greenArray.push(resizedImageBuffer[i + 1]);
-    //     blueArray.push(resizedImageBuffer[i + 2]);
-    // }
-
-    // const tensorData = redArray.concat(greenArray).concat(blueArray);
-    // const float32Array = new Float32Array(tensorData)
-
+    const data = await sharp(buffer).resize(INPUT_WIDTH, INPUT_HEIGHT, { fit: 'fill' }).raw({ depth: 'char' }).toBuffer()
     const tensor = new ort.Tensor('float32', new Float32Array(data), [1, 3, 640, 640])
     return tensor
 }
@@ -192,7 +177,8 @@ async function main() {
             socket.send('disconnected')
         })
         socket.on('predict', async (base64string) => {
-            const tensor = await getTensorFromBase64String(base64string)
+            const buffer = Buffer.from(base64string, 'base64')
+            const tensor = await getImageTensorFromPathOrBuffer(buffer)
             const result = await session.run({
                 'input': tensor
             })
@@ -222,7 +208,7 @@ async function main() {
 
     app.post('/upload', upload.single('image'), async (req, res) => {
         try {
-            const imgTensor = await getImageTensorFromPath(req.file.path)
+            const imgTensor = await getImageTensorFromPathOrBuffer(req.file.path)
 
             fs.unlink(join(process.cwd(), req.file.path), (err) => {
                 if (err)
