@@ -18,6 +18,7 @@
     "npm": "^9.8.1",
     "onnxruntime-node": "^1.15.1",
     "sharp": "^0.32.4",
-    "socket.io": "^4.7.2"
+    "socket.io": "^4.7.2",
+    "socket.io-client": "^4.7.2"
   }
 }

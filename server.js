@@ -154,14 +154,24 @@ async function getTensorFromBase64String(base64string) {
     const buffer = Buffer.from(base64string, 'base64')
     const INPUT_HEIGHT = 640
     const INPUT_WIDTH = 640
-    const data = await sharp(buffer).resize(INPUT_WIDTH, INPUT_HEIGHT, { fit: 'fill' }).toBuffer()
-    const float32Array = new Float32Array(3 * INPUT_HEIGHT * INPUT_WIDTH)
-    for (let i = 0; i < INPUT_HEIGHT * INPUT_WIDTH; i += 3) {
-        float32Array[i] = data[i]
-        float32Array[INPUT_HEIGHT * INPUT_WIDTH + i + 1] = data[i + 1]
-        float32Array[2 * INPUT_HEIGHT * INPUT_WIDTH + i + 2] = data[i + 2]
-    }
-    const tensor = new ort.Tensor('float32', float32Array, [1, 3, 640, 640])
+
+    const { data, info } = await sharp(buffer).resize(INPUT_WIDTH, INPUT_HEIGHT, { fit: 'fill' }).toFormat('jpg').raw({ depth: 'char' }).toBuffer({ resolveWithObject: true })
+    console.log(data)
+    console.log(info)
+    fs.writeFileSync('originImgage.jpg', buffer)
+    fs.writeFileSync('resizedImage.jpg',)
+    // fs.writeFile('resized_img.jpg', resizedImageBuffer)
+    // const [redArray, greenArray, blueArray] = [[], [], []]
+    // for (let i = 0; i < resizedImageBuffer.length; i += 3) {
+    //     redArray.push(resizedImageBuffer[i]);
+    //     greenArray.push(resizedImageBuffer[i + 1]);
+    //     blueArray.push(resizedImageBuffer[i + 2]);
+    // }
+
+    // const tensorData = redArray.concat(greenArray).concat(blueArray);
+    // const float32Array = new Float32Array(tensorData)
+
+    const tensor = new ort.Tensor('float32', new Float32Array(data), [1, 3, 640, 640])
     return tensor
 }
 
@@ -186,8 +196,9 @@ async function main() {
             const result = await session.run({
                 'input': tensor
             })
-            const rawResult = parsePredictResult(result).rawOutputArray
-            socket.emit("result", Buffer.from(rawResult))
+            const predicResult = parsePredictResult(result)
+            console.log(predicResult.outputResult)
+            socket.emit("result", Buffer.from(predicResult.rawOutputArray))
         })
     })
 
