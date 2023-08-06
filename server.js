@@ -5,7 +5,10 @@ const { join } = require('path');
 const Jimp = require('jimp')
 const multer = require('multer')
 const fs = require('fs')
+const { Server } = require("socket.io");
 const sharp = require('sharp')
+const { createServer } = require("http");
+
 
 const upload = multer({
     dest: './temp_imgs'
@@ -94,7 +97,7 @@ async function tensorFromRGB(redArray, greenArray, blueArray, height, width) {
     const INPUT_HEIGHT = 640
     const INPUT_WIDTH = 640
     const buffer = Buffer.alloc(3 * redArray.length)
-    for (let i = 0; i < redArray.length; i = i + 4) {
+    for (let i = 0; i < redArray.length; i = i + 3) {
         buffer[i] = redArray[i]
         buffer[i + 1] = greenArray[i]
         buffer[i + 2] = blueArray[i]
@@ -126,6 +129,7 @@ async function getImageTensorFromPath(path, dims = [1, 3, 640, 640]) {
 function parsePredictResult(rawResult) {
     const THRESHOLD = BigInt(30)
     let outputResult = []
+    let rawOutputArray = []
     for (let index = 0; index < 300; index = index + 5) {
         let accuracy = rawResult.dets.data[index + 4] * 100
         if (accuracy >= THRESHOLD) {
@@ -139,37 +143,58 @@ function parsePredictResult(rawResult) {
                     accuracy: accuracy
                 }
             )
+            Object.values(outputResult[index]).forEach(val => rawOutputArray.push(val))
+            rawOutputArray[rawOutputArray.length - 2] = rawResult.labels.data[index / 5]
         }
     }
-    return outputResult
+    return { outputResult, rawOutputArray }
+}
+
+async function getTensorFromBase64String(base64string) {
+    const buffer = Buffer.from(base64string, 'base64')
+    const INPUT_HEIGHT = 640
+    const INPUT_WIDTH = 640
+    const data = await sharp(buffer).resize(INPUT_WIDTH, INPUT_HEIGHT, { fit: 'fill' }).toBuffer()
+    const float32Array = new Float32Array(3 * INPUT_HEIGHT * INPUT_WIDTH)
+    for (let i = 0; i < INPUT_HEIGHT * INPUT_WIDTH; i += 3) {
+        float32Array[i] = data[i]
+        float32Array[INPUT_HEIGHT * INPUT_WIDTH + i + 1] = data[i + 1]
+        float32Array[2 * INPUT_HEIGHT * INPUT_WIDTH + i + 2] = data[i + 2]
+    }
+    const tensor = new ort.Tensor('float32', float32Array, [1, 3, 640, 640])
+    return tensor
 }
 
 async function main() {
-    const udpServer = UDP.createSocket('udp4')
     const PORT = process.env.PORT || 3000
     const app = express()
-    app.use(express.json({ limit: '5MB' }))
-
+    const httpServer = createServer(app);
+    const io = new Server(httpServer);
     const session = await ort.InferenceSession.create(join(process.cwd(), 'onnx_model', 'end2end.onnx'));
 
-    udpServer.on('message', (message, info) => {
-        console.log('received message')
-        udpServer.send(message, 65002)
+    httpServer.listen(PORT, () => {
+        console.log("HTTP Server and Socket waiting on PORT: " + PORT)
     })
 
-    udpServer.on('listening', () => {
-        console.log("Server is lestening on port " + PORT)
+    io.on("connection", socket => {
+        socket.send("connection established")
+        socket.on('disconnect', (reason) => {
+            socket.send('disconnected')
+        })
+        socket.on('predict', async (base64string) => {
+            const tensor = await getTensorFromBase64String(base64string)
+            const result = await session.run({
+                'input': tensor
+            })
+            const rawResult = parsePredictResult(result).rawOutputArray
+            socket.emit("result", Buffer.from(rawResult))
+        })
     })
 
-    udpServer.bind(PORT)
-
+    app.use(express.json({ limit: '5MB' }))
 
     app.get('/PORT', (req, res) => {
-        res.send(PORT)
-    })
-
-    app.get('/address', (req, res) => {
-        res.send(udpServer.address())
+        res.send(EXPRESS_PORT)
     })
 
     app.get('/results', (req, res) => {
@@ -180,10 +205,6 @@ async function main() {
         res.json({
             bbox: [{ x, y, width, height }]
         })
-    })
-
-    app.listen(PORT, () => {
-        console.log("app listen on port: " + PORT)
     })
 
     app.use('/uploads', express.static('upload_page'))
@@ -200,7 +221,7 @@ async function main() {
             const results = await session.run({
                 'input': imgTensor
             })
-            res.json({ bbox: parsePredictResult(results) })
+            res.json({ bbox: parsePredictResult(results).outputResult })
         } catch (error) {
             console.error(error)
         }
@@ -212,7 +233,7 @@ async function main() {
             const results = await session.run({
                 'input': tensor
             })
-            res.json({ bbox: parsePredictResult(results) })
+            res.json({ bbox: parsePredictResult(results).outputResult })
         } catch (error) {
             console.error(error)
             res.status(500).json({
