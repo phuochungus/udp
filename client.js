@@ -6,8 +6,8 @@ const { io } = require("socket.io-client");
 async function main() {
     const buffer = fs.readFileSync('demo.jpg')
     const base64string = Buffer.from(buffer).toString('base64')
-    const socket = io('http://localhost:3000')
-
+    const socket = io('https://realtime-model.onrender.com')
+    
     socket.on("result", (buffer) => {
         console.log(buffer)
     })
