@@ -8,7 +8,7 @@ const fs = require('fs')
 const { Server } = require("socket.io");
 const sharp = require('sharp')
 const { createServer } = require("http");
-
+const bodyParser = require('body-parser')
 
 const upload = multer({
     dest: './temp_imgs'
