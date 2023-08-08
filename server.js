@@ -126,8 +126,8 @@ async function getImageTensorFromPathOrBuffer(path, dims = [1, 3, 640, 640]) {
     return imageTensor;
 }
 
-function parsePredictResult(rawResult) {
-    const THRESHOLD = BigInt(0)
+function parsePredictResult(rawResult, threshHold = 30) {
+    const THRESHOLD = BigInt(threshHold)
     let outputResult = []
     let rawOutputArray = []
     for (let index = 0; index < 300; index = index + 5) {
@@ -163,8 +163,11 @@ async function getTensorFromBase64String(base64string) {
 async function main() {
     const PORT = process.env.PORT || 3000
     const app = express()
+    app.use(bodyParser.urlencoded({ extended: false }));
+    app.use(bodyParser.json());
     const httpServer = createServer(app);
     const io = new Server(httpServer);
+
     const session = await ort.InferenceSession.create(join(process.cwd(), 'onnx_model', 'end2end.onnx'));
 
     httpServer.listen(PORT, () => {
@@ -209,7 +212,7 @@ async function main() {
     app.post('/upload', upload.single('image'), async (req, res) => {
         try {
             const imgTensor = await getImageTensorFromPathOrBuffer(req.file.path)
-
+            const threshHold = req.query.threshold || 30
             fs.unlink(join(process.cwd(), req.file.path), (err) => {
                 if (err)
                     console.error(err)
@@ -218,7 +221,7 @@ async function main() {
             const results = await session.run({
                 'input': imgTensor
             })
-            res.json({ bbox: parsePredictResult(results).outputResult })
+            res.json({ bbox: parsePredictResult(results, threshHold).outputResult })
         } catch (error) {
             console.error(error)
         }
